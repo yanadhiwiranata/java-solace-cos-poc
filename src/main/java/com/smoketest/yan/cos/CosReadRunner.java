@@ -36,7 +36,7 @@ public class CosReadRunner {
 
             ListObjectsRequest listReq = new ListObjectsRequest();
             listReq.setBucketName(bucket);
-            listReq.setPrefix("smoketest/");
+            listReq.setPrefix("yan/");
             listReq.setMaxKeys(10);
 
             ObjectListing listing = cosClient.listObjects(listReq);

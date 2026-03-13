@@ -136,31 +136,29 @@ Downloads the object at `cos.read-key` from `cos.bucket` and prints its content.
 When the app starts a COS operation, `CosClientFactory` resolves credentials in the following order — stopping at the first that succeeds:
 
 ```
-1. TKE_ROLE_ARN env var present?
-   └─ YES → OIDC (TKE ServiceAccount)
-             ├─ TKE_WEB_IDENTITY_TOKEN_FILE env var set?
-             │   ├─ YES → use that token file path
-             │   └─ NO  → fall back to /var/run/secrets/tokens/oidc-token
-             ├─ TKE_REGION env var set?
-             │   ├─ YES → use it as STS region
-             │   └─ NO  → fall back to cos.region in config.properties
-             └─ OIDC init fails (missing role ARN, bad token, etc.)?
+1. TKE_ROLE_ARN env var present?  (auto-injected by TKE into the pod)
+   └─ YES → TKEOIDCCredentialsProvider
+             ├─ reads projected SA token from TKE_WEB_IDENTITY_TOKEN_FILE
+             │   (default: /var/run/secrets/tokens/oidc-token)
+             ├─ calls STS AssumeRoleWithWebIdentity with the token
+             ├─ caches credentials and auto-refreshes (AbstractCOSCachedCredentialsProvider)
+             └─ fails (missing role ARN, token unreadable, STS error)?
                  └─ fall through to step 3
 
 2. cos.auth-mode=oidc in config.properties?
-   └─ YES → OIDC (same flow as above)
-             └─ OIDC init fails?
+   └─ YES → TKEOIDCCredentialsProvider (same flow as above)
+             └─ fails?
                  └─ fall through to step 3
 
 3. AKSK (last resort)
    ├─ cos.secret-id and cos.secret-key set in config.properties?
-   │   └─ YES → use AKSK credentials
+   │   └─ YES → BasicCOSCredentials (static secret-id / secret-key)
    └─ NO → error: no valid credentials available
 ```
 
-> **In Kubernetes (TKE):** Steps 1–2 handle auth automatically via the annotated ServiceAccount. No changes to `config.properties` are needed.
+> **In Kubernetes (TKE):** `TKE_ROLE_ARN` is auto-injected when the pod uses an annotated ServiceAccount. No changes to `config.properties` are needed.
 >
-> **Local development:** Set `cos.auth-mode=aksk` with `cos.secret-id` / `cos.secret-key` in `config.properties`. Step 3 is used.
+> **Local development:** Set `cos.auth-mode=aksk` with `cos.secret-id` / `cos.secret-key` in `config.properties`.
 
 ---
 
@@ -175,11 +173,11 @@ cos.secret-id=YOUR_SECRET_ID
 cos.secret-key=YOUR_SECRET_KEY
 ```
 
-### OIDC via TKE Kubernetes ServiceAccount
+### TKE Kubernetes ServiceAccount (recommended for k8s)
 
-No code changes or `cos.auth-mode` setting are required. Simply annotate the Kubernetes ServiceAccount with the CAM role ARN and TKE handles the rest.
+`TKEOIDCCredentialsProvider` extends the SDK's `AbstractCOSCachedCredentialsProvider`. On each refresh it reads the projected ServiceAccount OIDC token and exchanges it for temporary credentials via STS `AssumeRoleWithWebIdentity`. The SDK handles caching and scheduling the refresh automatically.
 
-**1. Annotate the ServiceAccount:**
+**1. Annotate the ServiceAccount** with the required TKE OIDC annotations:
 ```yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -187,6 +185,8 @@ metadata:
   name: yan-smoketest
   annotations:
     tke.cloud.tencent.com/role-arn: "qcs::cam::uin/<UIN>:roleName/<RoleName>"
+    tke.cloud.tencent.com/audience: "sts.cloud.tencent.com"
+    tke.cloud.tencent.com/token-expiration: "86400"
 ```
 
 **2. Reference it in the Pod/Deployment:**
@@ -195,16 +195,14 @@ spec:
   serviceAccountName: yan-smoketest
 ```
 
-TKE then **auto-injects** these environment variables into every pod using that ServiceAccount:
+TKE **auto-injects** these env vars into every pod using that ServiceAccount:
 
 | Variable | Description | Fallback |
 |---|---|---|
 | `TKE_ROLE_ARN` | CAM role ARN | *(required — no fallback)* |
 | `TKE_WEB_IDENTITY_TOKEN_FILE` | Path to projected SA token | `/var/run/secrets/tokens/oidc-token` |
-| `TKE_REGION` | Tencent Cloud region | `cos.region` in `config.properties` |
+| `TKE_REGION` | STS region | `cos.region` in `config.properties` |
 | `TKE_PROVIDER_ID` | OIDC provider ID | *(optional)* |
-
-Temporary credentials are automatically refreshed 5 minutes before expiry.
 
 ---
 
@@ -233,8 +231,8 @@ com.smoketest.yan/
     │   ├── TopicListenerRunner.java       ← mode: listen-topic
     │   └── QueueListenerRunner.java       ← mode: listen-queue
     └── cos/
-        ├── TKEOIDCCredentialsProvider.java ← OIDC credentials refresh
-        ├── CosClientFactory.java           ← creates COSClient (oidc or aksk)
+        ├── TKEOIDCCredentialsProvider.java ← OIDC via STS (extends AbstractCOSCachedCredentialsProvider)
+        ├── CosClientFactory.java           ← credential resolution + COSClient creation
         ├── CosReadRunner.java              ← mode: cos-read
         └── CosWriteRunner.java             ← mode: cos-write
 ```
@@ -246,7 +244,7 @@ com.smoketest.yan/
 | Library | Version | Purpose |
 |---------|---------|---------|
 | `com.solacesystems:sol-jcsmp` | 10.22.0 | Solace JCSMP API |
-| `com.qcloud:cos_api` | 5.6.259 | Tencent COS SDK |
-| `com.tencentcloudapi:tencentcloud-sdk-java-sts` | 3.1.1322 | STS AssumeRole for OIDC |
+| `com.qcloud:cos_api` | 5.6.259 | Tencent COS SDK (`AbstractCOSCachedCredentialsProvider`, etc.) |
+| `com.tencentcloudapi:tencentcloud-sdk-java-sts` | 3.1.1322 | STS `AssumeRoleWithWebIdentity` for OIDC |
 | `ch.qos.logback:logback-classic` | 1.4.14 | Logging |
 | `com.google.code.gson:gson` | 2.10.1 | JSON |
