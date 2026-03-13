@@ -1,0 +1,20 @@
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%-5level] [%logger{30}] %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Suppress noisy Solace / Tencent SDK internal logs -->
+    <logger name="com.solacesystems" level="WARN"/>
+    <logger name="com.tencentcloudapi" level="WARN"/>
+    <logger name="com.qcloud" level="WARN"/>
+    <logger name="org.apache" level="WARN"/>
+
+    <!-- Our app logs at INFO -->
+    <logger name="com.smoketest.yan" level="INFO"/>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

@@ -1,0 +1,57 @@
+# ============================================================
+# com.smoketest.yan - PoC Configuration
+# Copy this file to config.properties and fill in your values.
+#   cp config.properties.example config.properties
+# ============================================================
+
+# ---- SOLACE ----------------------------------------------------------------
+solace.host=tcps://YOUR_SOLACE_HOST
+solace.port=55443
+solace.msg-vpn=YOUR_MSG_VPN
+solace.username=YOUR_USERNAME
+solace.password=YOUR_PASSWORD
+solace.connect-retries=5
+solace.reconnect-retries=20
+solace.reconnect-retry-wait-ms=3000
+# Set to false to skip TLS certificate validation (useful in dev)
+solace.ssl-validate-certificate=false
+
+# ---- SOLACE DESTINATIONS ---------------------------------------------------
+# Topic to publish / subscribe to
+solace.topic=smoketest/yan/topic/test
+
+# Queue to publish / subscribe to
+# The queue MUST already exist on the broker with a topic subscription
+# e.g. add subscription "smoketest/yan/queue/test" to queue q.smoketest.yan
+solace.queue=q.smoketest.yan
+
+# ---- TENCENT COS -----------------------------------------------------------
+# Bucket region, e.g. ap-guangzhou, ap-jakarta, ap-singapore
+cos.region=ap-jakarta
+
+# Bucket name (format: name-appid)
+cos.bucket=your-bucket-1234567890
+
+# Object key for read operation
+cos.read-key=smoketest/read-test.txt
+
+# Object key for write operation
+cos.write-key=smoketest/write-test.txt
+
+# Content to write (for cos-write mode)
+cos.write-content=Hello from com.smoketest.yan PoC!
+
+# ---- TENCENT COS AUTH ------------------------------------------------------
+# Mode: oidc | aksk
+# Use "oidc" when running inside TKE (env vars injected automatically).
+# Use "aksk" for local testing with explicit secret id/key.
+cos.auth-mode=aksk
+
+# Used only when cos.auth-mode=aksk
+cos.secret-id=YOUR_SECRET_ID
+cos.secret-key=YOUR_SECRET_KEY
+
+# Used only when cos.auth-mode=oidc (normally injected by TKE automatically)
+# TKE_ROLE_ARN=qcs::cam::uin/xxx:roleName/MyRole
+# TKE_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/tokens/oidc-token
+# TKE_REGION=ap-guangzhou
