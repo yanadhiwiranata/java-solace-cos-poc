@@ -119,15 +119,52 @@ Interactive prompt — publishes persistent messages directly to the queue endpo
 java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-write
 ```
 
+Writes `cos.write-content` to the object at `cos.write-key` inside `cos.bucket`.
+
 ### Read an object
 
 ```bash
 java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-read
 ```
 
+Downloads the object at `cos.read-key` from `cos.bucket` and prints its content.
+
 ---
 
-## COS Authentication
+## COS Credential Priority
+
+When the app starts a COS operation, `CosClientFactory` resolves credentials in the following order — stopping at the first that succeeds:
+
+```
+1. TKE_ROLE_ARN env var present?
+   └─ YES → OIDC (TKE ServiceAccount)
+             ├─ TKE_WEB_IDENTITY_TOKEN_FILE env var set?
+             │   ├─ YES → use that token file path
+             │   └─ NO  → fall back to /var/run/secrets/tokens/oidc-token
+             ├─ TKE_REGION env var set?
+             │   ├─ YES → use it as STS region
+             │   └─ NO  → fall back to cos.region in config.properties
+             └─ OIDC init fails (missing role ARN, bad token, etc.)?
+                 └─ fall through to step 3
+
+2. cos.auth-mode=oidc in config.properties?
+   └─ YES → OIDC (same flow as above)
+             └─ OIDC init fails?
+                 └─ fall through to step 3
+
+3. AKSK (last resort)
+   ├─ cos.secret-id and cos.secret-key set in config.properties?
+   │   └─ YES → use AKSK credentials
+   └─ NO → error: no valid credentials available
+```
+
+> **In Kubernetes (TKE):** Steps 1–2 handle auth automatically via the annotated ServiceAccount. No changes to `config.properties` are needed.
+>
+> **Local development:** Set `cos.auth-mode=aksk` with `cos.secret-id` / `cos.secret-key` in `config.properties`. Step 3 is used.
+
+---
+
+## COS Authentication Setup
 
 ### AKSK (local development)
 
@@ -166,8 +203,6 @@ TKE then **auto-injects** these environment variables into every pod using that 
 | `TKE_WEB_IDENTITY_TOKEN_FILE` | Path to projected SA token | `/var/run/secrets/tokens/oidc-token` |
 | `TKE_REGION` | Tencent Cloud region | `cos.region` in `config.properties` |
 | `TKE_PROVIDER_ID` | OIDC provider ID | *(optional)* |
-
-The app auto-detects OIDC when `TKE_ROLE_ARN` is present in the environment, so `cos.auth-mode` in `config.properties` does not need to be changed.
 
 Temporary credentials are automatically refreshed 5 minutes before expiry.
 
