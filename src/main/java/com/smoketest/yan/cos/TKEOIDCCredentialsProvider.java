@@ -24,12 +24,16 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * TKE OIDC credentials provider for Tencent COS.
  *
- * Automatically obtains and refreshes temporary credentials via OIDC + STS.
- * Required environment variables (auto-injected by TKE):
- *   TKE_ROLE_ARN               - CAM role ARN
- *   TKE_WEB_IDENTITY_TOKEN_FILE - Path to ServiceAccount OIDC token file
- *   TKE_REGION                 - Tencent Cloud region (e.g. ap-guangzhou)
- *   TKE_PROVIDER_ID            - OIDC provider ID (optional)
+ * Automatically obtains and refreshes temporary credentials via OIDC + STS
+ * using the Kubernetes ServiceAccount projected token.
+ *
+ * Environment variables (auto-injected by TKE when ServiceAccount is annotated):
+ *   TKE_ROLE_ARN                - CAM role ARN (required)
+ *   TKE_WEB_IDENTITY_TOKEN_FILE - Path to projected SA token file
+ *                                 (falls back to DEFAULT_SA_TOKEN_PATH)
+ *   TKE_REGION                  - Tencent Cloud region
+ *                                 (falls back to regionFallback from cos.region)
+ *   TKE_PROVIDER_ID             - OIDC provider ID (optional)
  */
 public class TKEOIDCCredentialsProvider implements COSCredentialsProvider {
 
@@ -38,6 +42,10 @@ public class TKEOIDCCredentialsProvider implements COSCredentialsProvider {
     private static final String DEFAULT_SESSION_NAME    = "TKE-COS-Session";
     private static final long   DEFAULT_DURATION_SECONDS = 3600L;
     private static final long   REFRESH_BUFFER_SECONDS  = 300L;
+
+    /** Standard path where TKE/K8s mounts the projected ServiceAccount OIDC token. */
+    private static final String DEFAULT_SA_TOKEN_PATH =
+        "/var/run/secrets/tokens/oidc-token";
 
     private volatile COSCredentials credentials;
     private volatile long credentialsExpireTime = 0;
@@ -55,26 +63,53 @@ public class TKEOIDCCredentialsProvider implements COSCredentialsProvider {
     private final String providerId;
     private final String region;
 
-    public TKEOIDCCredentialsProvider() {
+    /**
+     * @param regionFallback  value from cos.region in config.properties,
+     *                        used when TKE_REGION env var is absent
+     */
+    public TKEOIDCCredentialsProvider(String regionFallback) {
         this.roleArn       = System.getenv("TKE_ROLE_ARN");
-        this.tokenFilePath = System.getenv("TKE_WEB_IDENTITY_TOKEN_FILE");
         this.providerId    = System.getenv("TKE_PROVIDER_ID");
-        this.region        = System.getenv("TKE_REGION");
+        this.tokenFilePath = resolveTokenFilePath();
+        this.region        = resolveRegion(regionFallback);
 
-        if (roleArn == null || roleArn.isEmpty() ||
-            tokenFilePath == null || tokenFilePath.isEmpty()) {
+        if (roleArn == null || roleArn.isEmpty()) {
             throw new CosClientException(
-                "TKE environment variables missing. Ensure ServiceAccount has annotation: " +
-                "tke.cloud.tencent.com/role-arn"
+                "TKE_ROLE_ARN env var is missing. " +
+                "Ensure the Kubernetes ServiceAccount has annotation: " +
+                "tke.cloud.tencent.com/role-arn=<CAM role ARN>"
             );
         }
         if (this.region == null || this.region.isEmpty()) {
             throw new CosClientException(
-                "Region not specified. Set TKE_REGION environment variable."
+                "Region not specified. Set TKE_REGION env var or cos.region in config.properties."
             );
         }
 
-        log.info("TKE OIDC initialized - RoleArn: {}, Region: {}", roleArn, this.region);
+        log.info("TKE OIDC initialized - RoleArn={}, TokenFile={}, Region={}",
+            roleArn, tokenFilePath, this.region);
+    }
+
+    private static String resolveTokenFilePath() {
+        String fromEnv = System.getenv("TKE_WEB_IDENTITY_TOKEN_FILE");
+        if (fromEnv != null && !fromEnv.isEmpty()) {
+            return fromEnv;
+        }
+        log.warn("TKE_WEB_IDENTITY_TOKEN_FILE not set, falling back to default path: {}",
+            DEFAULT_SA_TOKEN_PATH);
+        return DEFAULT_SA_TOKEN_PATH;
+    }
+
+    private static String resolveRegion(String fallback) {
+        String fromEnv = System.getenv("TKE_REGION");
+        if (fromEnv != null && !fromEnv.isEmpty()) {
+            return fromEnv;
+        }
+        if (fallback != null && !fallback.isEmpty()) {
+            log.info("TKE_REGION not set, using cos.region fallback: {}", fallback);
+            return fallback;
+        }
+        return null;
     }
 
     @Override

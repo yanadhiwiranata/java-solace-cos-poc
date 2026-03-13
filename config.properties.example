@@ -33,25 +33,32 @@ cos.region=ap-jakarta
 cos.bucket=your-bucket-1234567890
 
 # Object key for read operation
-cos.read-key=smoketest/read-test.txt
+cos.read-key=smoketest/yan-test.txt
 
 # Object key for write operation
-cos.write-key=smoketest/write-test.txt
+cos.write-key=smoketest/yan-test.txt
 
 # Content to write (for cos-write mode)
-cos.write-content=Hello from com.smoketest.yan PoC!
+cos.write-content=ping
 
 # ---- TENCENT COS AUTH ------------------------------------------------------
 # Mode: oidc | aksk
-# Use "oidc" when running inside TKE (env vars injected automatically).
-# Use "aksk" for local testing with explicit secret id/key.
+#
+# In Kubernetes (TKE):
+#   Set cos.auth-mode=oidc, OR simply annotate the ServiceAccount with
+#   tke.cloud.tencent.com/role-arn=<CAM role ARN> and OIDC is auto-detected
+#   from the TKE_ROLE_ARN env var — no changes to config.properties needed.
+#
+#   TKE auto-injects these env vars into the pod:
+#     TKE_ROLE_ARN                 - CAM role ARN
+#     TKE_WEB_IDENTITY_TOKEN_FILE  - projected SA token path
+#                                    (default: /var/run/secrets/tokens/oidc-token)
+#     TKE_REGION                   - region (fallback: cos.region below)
+#     TKE_PROVIDER_ID              - OIDC provider ID (optional)
+#
+# For local development: set cos.auth-mode=aksk and fill in secret-id/key.
 cos.auth-mode=aksk
 
-# Used only when cos.auth-mode=aksk
+# Used only when cos.auth-mode=aksk (local dev)
 cos.secret-id=YOUR_SECRET_ID
 cos.secret-key=YOUR_SECRET_KEY
-
-# Used only when cos.auth-mode=oidc (normally injected by TKE automatically)
-# TKE_ROLE_ARN=qcs::cam::uin/xxx:roleName/MyRole
-# TKE_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/tokens/oidc-token
-# TKE_REGION=ap-guangzhou

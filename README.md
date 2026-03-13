@@ -39,11 +39,11 @@ solace.topic=smoketest/yan/topic/test
 solace.queue=q.smoketest.yan
 
 # Tencent COS
-cos.region=ap-guangzhou
-cos.bucket=your-bucket-1234567890
-cos.read-key=smoketest/read-test.txt
-cos.write-key=smoketest/write-test.txt
-cos.write-content=Hello from com.smoketest.yan PoC!
+cos.region=ap-jakarta
+cos.bucket=core-epc-1394748486
+cos.read-key=yan/yan-test.txt
+cos.write-key=yan/yan-test.txt
+cos.write-content=ping
 
 # Auth: aksk (local) or oidc (TKE)
 cos.auth-mode=aksk
@@ -138,23 +138,38 @@ cos.secret-id=YOUR_SECRET_ID
 cos.secret-key=YOUR_SECRET_KEY
 ```
 
-### OIDC via TKE (Kubernetes)
+### OIDC via TKE Kubernetes ServiceAccount
 
-Set in `config.properties`:
-```properties
-cos.auth-mode=oidc
+No code changes or `cos.auth-mode` setting are required. Simply annotate the Kubernetes ServiceAccount with the CAM role ARN and TKE handles the rest.
+
+**1. Annotate the ServiceAccount:**
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: yan-smoketest
+  annotations:
+    tke.cloud.tencent.com/role-arn: "qcs::cam::uin/<UIN>:roleName/<RoleName>"
 ```
 
-The following **must be provided as environment variables** (TKE auto-injects them when using an annotated ServiceAccount):
+**2. Reference it in the Pod/Deployment:**
+```yaml
+spec:
+  serviceAccountName: yan-smoketest
+```
 
-| Variable                    | Description                     |
-|-----------------------------|---------------------------------|
-| `TKE_ROLE_ARN`              | CAM role ARN                    |
-| `TKE_WEB_IDENTITY_TOKEN_FILE` | Path to OIDC token file       |
-| `TKE_REGION`                | Tencent Cloud region            |
-| `TKE_PROVIDER_ID`           | OIDC provider ID (optional)     |
+TKE then **auto-injects** these environment variables into every pod using that ServiceAccount:
 
-Credentials are automatically refreshed 5 minutes before expiry.
+| Variable | Description | Fallback |
+|---|---|---|
+| `TKE_ROLE_ARN` | CAM role ARN | *(required — no fallback)* |
+| `TKE_WEB_IDENTITY_TOKEN_FILE` | Path to projected SA token | `/var/run/secrets/tokens/oidc-token` |
+| `TKE_REGION` | Tencent Cloud region | `cos.region` in `config.properties` |
+| `TKE_PROVIDER_ID` | OIDC provider ID | *(optional)* |
+
+The app auto-detects OIDC when `TKE_ROLE_ARN` is present in the environment, so `cos.auth-mode` in `config.properties` does not need to be changed.
+
+Temporary credentials are automatically refreshed 5 minutes before expiry.
 
 ---
 
