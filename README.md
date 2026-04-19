@@ -53,81 +53,60 @@ cos.secret-key=YOUR_SECRET_KEY
 
 ---
 
-## Run — Multiple Consoles
+## Run
 
-Open **4 separate terminals** from the project directory.
-
-### Terminal 1 — Listen on Topic
+All modes use the same JAR. Replace `--mode=` with the mode you want.
 
 ```bash
+# ── Solace ──────────────────────────────────────────────────────────────────
 java -jar target/yan-smoketest-1.0.0-fat.jar --mode=listen-topic
-```
-
-Subscribes to `solace.topic` and prints every message received. Runs until `Ctrl+C`.
-
-> **Note**: Direct topic subscription receives only messages published while this consumer is connected (non-persistent). For guaranteed delivery use a queue with a topic subscription.
-
----
-
-### Terminal 2 — Publish to Topic
-
-```bash
 java -jar target/yan-smoketest-1.0.0-fat.jar --mode=publish-topic
+java -jar target/yan-smoketest-1.0.0-fat.jar --mode=listen-queue
+java -jar target/yan-smoketest-1.0.0-fat.jar --mode=publish-queue
+
+# ── Tencent COS ─────────────────────────────────────────────────────────────
+java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-write
+java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-read
+
+# ── Custom config path (optional) ───────────────────────────────────────────
+java -jar target/yan-smoketest-1.0.0-fat.jar --mode=listen-topic --config=/etc/smoketest/config.properties
 ```
 
-Interactive prompt — type a message and press `Enter` to publish. Type `exit` to quit.
+| Mode | What it does | Exits when |
+|---|---|---|
+| `listen-topic` | Subscribe to `solace.topic`, print every message | `Ctrl+C` |
+| `publish-topic` | Interactive prompt → publish to `solace.topic` | type `exit` |
+| `listen-queue` | Bind flow to `solace.queue`, print every message | `Ctrl+C` |
+| `publish-queue` | Interactive prompt → publish persistent msgs to `solace.queue` | type `exit` |
+| `cos-write` | Write `cos.write-content` to `cos.write-key` in `cos.bucket` | immediately |
+| `cos-read` | Download `cos.read-key` from `cos.bucket` and print it | immediately |
+
+### Typical 4-terminal Solace test
+
+Open 4 terminals in the project directory and run one command per terminal:
 
 ```
-[TOPIC PUBLISHER] Connected to topic: smoketest/yan/topic/test
+Terminal 1  →  listen-topic
+Terminal 2  →  publish-topic
+Terminal 3  →  listen-queue
+Terminal 4  →  publish-queue
+```
+
+> **Topic vs Queue**: `listen-topic` uses a direct (non-persistent) subscription — messages published while it is disconnected are lost. For guaranteed delivery, use `listen-queue` against a queue that has a topic subscription configured on the broker.
+>
+> The queue (`solace.queue`) **must already exist** on the Solace broker. Add a topic subscription to it via the Solace admin console or CLI if you want topic-published messages to flow into the queue.
+
+### Publisher sample output
+
+```
+[TOPIC PUBLISHER] Connected to topic: yan-topic
 Type a message and press Enter. Type 'exit' to quit.
 
 [msg #1] > hello world
-  → Published to topic [smoketest/yan/topic/test]
+  → Published to topic [yan-topic]
 [msg #2] > exit
 Exiting topic publisher.
 ```
-
----
-
-### Terminal 3 — Listen on Queue
-
-```bash
-java -jar target/yan-smoketest-1.0.0-fat.jar --mode=listen-queue
-```
-
-Binds to `solace.queue` using a flow (guaranteed delivery). Runs until `Ctrl+C`.
-
-> The queue **must already exist** on the Solace broker. If you want queue listeners to also receive topic messages, add a topic subscription to the queue via the Solace admin console / CLI.
-
----
-
-### Terminal 4 — Publish to Queue
-
-```bash
-java -jar target/yan-smoketest-1.0.0-fat.jar --mode=publish-queue
-```
-
-Interactive prompt — publishes persistent messages directly to the queue endpoint.
-
----
-
-## Run — COS
-
-### Write an object
-
-```bash
-java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-write
-```
-
-Writes `cos.write-content` to the object at `cos.write-key` inside `cos.bucket`.
-
-### Read an object
-
-```bash
-java -jar target/yan-smoketest-1.0.0-fat.jar --mode=cos-read
-```
-
-Downloads the object at `cos.read-key` from `cos.bucket` and prints its content.
 
 ---
 
@@ -203,14 +182,6 @@ TKE **auto-injects** these env vars into every pod using that ServiceAccount:
 | `TKE_WEB_IDENTITY_TOKEN_FILE` | Path to projected SA token | `/var/run/secrets/tokens/oidc-token` |
 | `TKE_REGION` | STS region | `cos.region` in `config.properties` |
 | `TKE_PROVIDER_ID` | OIDC provider ID | *(optional)* |
-
----
-
-## Custom config path
-
-```bash
-java -jar target/yan-smoketest-1.0.0-fat.jar --mode=listen-topic --config=/etc/smoketest/config.properties
-```
 
 ---
 

@@ -18,12 +18,12 @@ solace.ssl-validate-certificate=false
 
 # ---- SOLACE DESTINATIONS ---------------------------------------------------
 # Topic to publish / subscribe to
-solace.topic=smoketest/yan/topic/test
+solace.topic=yan-topic
 
 # Queue to publish / subscribe to
 # The queue MUST already exist on the broker with a topic subscription
-# e.g. add subscription "smoketest/yan/queue/test" to queue q.smoketest.yan
-solace.queue=q.smoketest.yan
+# e.g. add subscription "yan-topic" to queue yan-queue
+solace.queue=yan-queue
 
 # ---- TENCENT COS -----------------------------------------------------------
 # Bucket region, e.g. ap-guangzhou, ap-jakarta, ap-singapore
